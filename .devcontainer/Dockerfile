@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     ros-jazzy-rviz2 \
     ros-jazzy-moveit \
+    nodejs \
+    npm \
+    ros-jazzy-rosbridge-suite \
     && rm -rf /var/lib/apt/lists/*
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc

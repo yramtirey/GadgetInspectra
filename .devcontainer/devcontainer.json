@@ -5,6 +5,7 @@
     "context": ".."
   },
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "forwardPorts": [5173, 9090],
   "customizations": {
     "vscode": {
       "extensions": [

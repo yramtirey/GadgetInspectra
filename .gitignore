@@ -15,3 +15,10 @@ __pycache__/
 # Environment files
 .env
 .venv/
+
+# React dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
+# Accidental npm install in ROS workspace
+ros2_ws/node_modules/

@@ -17,5 +17,17 @@ def generate_launch_description():
                 name="operator_console",
                 output="screen",
             ),
+            Node(
+                package="rosbridge_server",
+                executable="rosbridge_websocket",
+                name="rosbridge_websocket",
+                output="screen",
+                parameters=[
+                    {
+                        "port": 9090,
+                        "address": "0.0.0.0",
+                    }
+                ],
+            ),
         ]
     )
