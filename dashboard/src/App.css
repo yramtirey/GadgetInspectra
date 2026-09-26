@@ -142,52 +142,14 @@
 }
 
 .robot-visual {
-  position: relative;
-  width: min(290px, 72vw);
-  aspect-ratio: 1;
-  margin: auto;
-  display: grid;
-  place-items: center;
+  width: 100%;
+  margin-top: 16px;
 }
 
-.scan-ring {
-  position: absolute;
-  border: 1px solid rgba(111, 38, 61, 0.24);
-  border-radius: 50%;
-}
-
-.outer-ring {
-  inset: 5%;
-  border-style: dashed;
-  animation: rotate 18s linear infinite;
-}
-
-.inner-ring {
-  inset: 19%;
-  border-color: rgba(22, 79, 74, 0.35);
-  box-shadow:
-    inset 0 0 35px rgba(22, 79, 74, 0.06),
-    0 0 35px rgba(231, 184, 197, 0.25);
-  animation: rotate-reverse 12s linear infinite;
-}
-
-.robot-core {
-  width: 105px;
-  height: 105px;
-  border-radius: 28px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, var(--burgundy), var(--deep-burgundy));
-  color: var(--paper);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 2.2rem;
-  box-shadow: 0 20px 45px rgba(61, 23, 36, 0.27);
-  transform: rotate(45deg);
-}
-
-.robot-core span {
-  display: block;
-  transform: rotate(-45deg);
+.scene-caption {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .progress-block {
@@ -251,6 +213,36 @@
   background: rgba(255, 242, 244, 0.94);
 }
 
+.scan-phase {
+  margin-top: 5px;
+}
+
+.reading-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.metric-card .reading-chip {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(22, 79, 74, 0.08);
+  color: var(--aqua);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.metric-card .reading-chip.below-threshold {
+  background: rgba(182, 65, 90, 0.12);
+  color: var(--danger);
+}
+
+.metric-card .error-reason {
+  margin-top: 9px;
+  color: var(--danger);
+}
+
 .event-card {
   grid-column: 1 / -1;
   padding: clamp(24px, 4vw, 36px);
@@ -307,18 +299,6 @@
   text-align: center;
 }
 
-@keyframes rotate {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes rotate-reverse {
-  to {
-    transform: rotate(-360deg);
-  }
-}
-
 @keyframes pulse {
   50% {
     opacity: 0.55;
@@ -358,8 +338,8 @@
 .inspection-scene {
   position: relative;
   width: 100%;
-  height: 360px;
-  margin: 24px 0;
+  height: clamp(280px, 35vw, 360px);
+  margin: 0 0 12px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 18px;

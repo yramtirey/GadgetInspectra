@@ -29,5 +29,11 @@ def generate_launch_description():
                     }
                 ],
             ),
+            Node(
+                package="gadget_inspectra_core",
+                executable="thickness_sensor",
+                name="thickness_sensor",
+                output="screen",
+            ),
         ]
     )

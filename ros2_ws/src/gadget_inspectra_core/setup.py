@@ -30,6 +30,7 @@ setup(
         "console_scripts": [
             "inspection_controller = gadget_inspectra_core.inspection_controller:main",
             "operator_console = gadget_inspectra_core.operator_console:main",
+            "thickness_sensor = gadget_inspectra_core.thickness_sensor:main",
         ],
     },
 )

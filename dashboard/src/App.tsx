@@ -10,11 +10,34 @@ type InspectionStatus = {
   state: string;
   progress_percent: number;
   defect_detected: boolean;
-  defect_confidence: number;
+  rework_performed: boolean;
+  minimum_thickness_mm: number | null;
+  threshold_mm: number;
+  measurements: { point: string; thickness_mm: number }[];
+  measurement_phase: "initial" | "verification" | null;
+  error_reason: string | null;
 };
 
-function formatState(state: string) {
-  return state.replace(/_/g, " ");
+function formatName(name: string) {
+  return name.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function describeState(status: InspectionStatus) {
+  switch (status.state) {
+    case "SYSTEM_READY": return "Ready for inspection";
+    case "MOVING_TO_TARGET": return "Positioning scanner";
+    case "INSPECTING": return "Scanning panel";
+    case "WAITING_FOR_SENSOR": return "Waiting for scan reading";
+    case "ANALYZING": return "Checking thickness";
+    case "DEFECT_DETECTED": return "Thin spot detected";
+    case "REWORKING": return "Simulating rework";
+    case "VERIFYING_REWORK": return "Starting verification scan";
+    case "WAITING_FOR_VERIFICATION": return "Waiting for verification";
+    case "INSPECTION_COMPLETE":
+      return status.rework_performed ? "Rework verified" : "Inspection passed";
+    case "INSPECTION_FAILED": return "Inspection failed";
+    default: return formatName(status.state);
+  }
 }
 
 function App() {
@@ -23,21 +46,30 @@ function App() {
   const [eventLog, setEventLog] = useState<InspectionStatus[]>([]);
 
   useEffect(() => {
+    let active = true;
     const ros = new ROSLIB.Ros({
       url: "ws://localhost:9090",
     });
 
     ros.on("connection", () => {
-      setConnected(true);
+      if (active) setConnected(true);
     });
 
     ros.on("error", (error: unknown) => {
       console.error("ROS connection error:", error);
-      setConnected(false);
+      if (active) {
+        setConnected(false);
+        setStatus(null);
+        setEventLog([]);
+      }
     });
 
     ros.on("close", () => {
-      setConnected(false);
+      if (active) {
+        setConnected(false);
+        setStatus(null);
+        setEventLog([]);
+      }
     });
 
     const statusTopic = new ROSLIB.Topic({
@@ -47,6 +79,7 @@ function App() {
     });
 
     statusTopic.subscribe((message: unknown) => {
+      if (!active) return;
       const rawMessage = message as {
         data: string;
       };
@@ -66,24 +99,36 @@ function App() {
     });
 
     return () => {
+      active = false;
       statusTopic.unsubscribe();
       ros.close();
     };
   }, []);
 
-  const isAlert =
-    status?.state === "DEFECT_DETECTED" ||
-    status?.state === "REWORKING";
-
-  const confidence = status
-    ? Math.round(status.defect_confidence * 100)
-    : 0;
+  const isAlert = Boolean(
+    status?.defect_detected || status?.state === "INSPECTION_FAILED",
+  );
+  const minimumThickness = status?.minimum_thickness_mm;
+  const thicknessText = typeof minimumThickness === "number"
+    ? minimumThickness.toFixed(1)
+    : null;
+  const hasReading = thicknessText !== null;
+  const threshold = status?.threshold_mm ?? 7.0;
+  const thicknessResult = !hasReading
+    ? "Awaiting scan"
+    : status?.state === "INSPECTION_FAILED"
+      ? "Inspection failed"
+      : status?.defect_detected
+        ? "Below threshold"
+        : status?.rework_performed
+          ? "Verified after rework"
+          : "Within threshold";
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ROBOTIC INSPECTION PLATFORM</p>
+          <p className="eyebrow">SIMULATED ROBOTIC INSPECTION · LIVE ROS TELEMETRY</p>
           <h1>GadgetInspectra</h1>
         </div>
 
@@ -97,7 +142,7 @@ function App() {
         <article className="hero-card">
           <div className="card-heading">
             <div>
-              <p className="label">CURRENT MISSION</p>
+              <p className="label">CURRENT INSPECTION</p>
               <h2>
                 Inspection{" "}
                 {status ? String(status.inspection_id).padStart(3, "0") : "---"}
@@ -105,7 +150,7 @@ function App() {
             </div>
 
             <span className={`state-pill ${isAlert ? "alert" : ""}`}>
-              {status ? formatState(status.state) : "WAITING FOR DATA"}
+              {status ? describeState(status) : "Waiting for telemetry"}
             </span>
           </div>
 
@@ -115,11 +160,15 @@ function App() {
               defectDetected={status?.defect_detected ?? false}
             />
           </div>
-          
+          <p className="scene-caption">
+            {connected && status
+              ? "3D arm animation follows ROS status; motion and rework are simulated."
+              : "3D preview · waiting for live ROS telemetry."}
+          </p>
 
           <div className="progress-block">
             <div className="progress-copy">
-              <span>Mission progress</span>
+              <span>Inspection progress</span>
               <strong>{status?.progress_percent ?? 0}%</strong>
             </div>
 
@@ -136,33 +185,55 @@ function App() {
 
         <aside className="metrics-column">
           <article className="metric-card">
-            <p className="label">ROBOT</p>
-            <strong>{status?.robot ?? "Awaiting connection"}</strong>
-            <span>6-axis inspection manipulator</span>
+            <p className="label">SIMULATED SCANNER</p>
+            <strong>{status ? formatName(status.robot) : "Awaiting telemetry"}</strong>
+            <span>ROS-driven inspection arm visualization</span>
           </article>
 
           <article className="metric-card">
-            <p className="label">TARGET ASSET</p>
-            <strong>{status?.target ?? "No target assigned"}</strong>
-            <span>Active inspection region</span>
+            <p className="label">INSPECTION TARGET</p>
+            <strong>{status ? formatName(status.target) : "Awaiting target"}</strong>
+            <span>Panel thickness at three scan points</span>
           </article>
 
           <article className={`metric-card ${isAlert ? "danger-card" : ""}`}>
-            <p className="label">DEFECT ANALYSIS</p>
-            <strong>
-              {status?.defect_detected ? "Defect detected" : "No active defect"}
-            </strong>
-            <span>Model confidence: {confidence}%</span>
+            <p className="label">THICKNESS CHECK</p>
+            <strong>{thicknessResult}</strong>
+            <span>
+              {hasReading
+                ? `Minimum: ${thicknessText} mm · Pass: ≥ ${threshold.toFixed(1)} mm`
+                : `Pass threshold: ≥ ${threshold.toFixed(1)} mm`}
+            </span>
+            {hasReading && (
+              <span className="scan-phase">
+                {status?.measurement_phase === "verification"
+                  ? "Verification scan after simulated rework"
+                  : "Initial scan"}
+              </span>
+            )}
+            {status?.measurements?.length ? (
+              <div className="reading-list" aria-label="Thickness readings">
+                {status.measurements.map(({ point, thickness_mm }) => (
+                  <span
+                    className={`reading-chip ${thickness_mm < threshold ? "below-threshold" : ""}`}
+                    key={point}
+                  >
+                    {point}: {thickness_mm.toFixed(1)} mm
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {status?.error_reason && <span className="error-reason">{status.error_reason}</span>}
           </article>
         </aside>
 
         <article className="event-card">
           <div className="card-heading">
             <div>
-              <p className="label">LIVE EVENT STREAM</p>
-              <h2>System activity</h2>
+              <p className="label">LIVE ROS STATUS</p>
+              <h2>Recent inspection updates</h2>
             </div>
-            <span>{eventLog.length} recent events</span>
+            <span>{eventLog.length} recent updates</span>
           </div>
 
           <div className="event-list">
@@ -176,11 +247,14 @@ function App() {
                   className="event-row"
                   key={`${event.inspection_id}-${event.state}-${index}`}
                 >
-                  <span className={`event-marker ${event.defect_detected ? "alert" : ""}`} />
+                  <span className={`event-marker ${event.defect_detected || event.state === "INSPECTION_FAILED" ? "alert" : ""}`} />
                   <div>
-                    <strong>{formatState(event.state)}</strong>
+                    <strong>{describeState(event)}</strong>
                     <p>
-                      Inspection {event.inspection_id} · {event.target}
+                      Inspection {event.inspection_id} · {formatName(event.target)}
+                      {typeof event.minimum_thickness_mm === "number"
+                        ? ` · Minimum ${event.minimum_thickness_mm.toFixed(1)} mm`
+                        : ""}
                     </p>
                   </div>
                   <span>{event.progress_percent}%</span>
