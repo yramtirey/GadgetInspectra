@@ -1,6 +1,10 @@
 import json
 import math
+import os
 import time
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
 import rclpy
 from rclpy.node import Node
@@ -26,6 +30,13 @@ class InspectionController(Node):
 
         self.target = "asset_panel_A"
         self.inspection_id = 1
+        self.run_id = str(uuid4())
+        self.audit_path = Path(
+            os.environ.get(
+                "GADGET_INSPECTION_AUDIT_LOG",
+                str(Path.home() / ".ros" / "gadget_inspectra_inspections.jsonl"),
+            )
+        ).expanduser()
         self.progress_by_state = {
             "SYSTEM_READY": 0,
             "MOVING_TO_TARGET": 15,
@@ -45,6 +56,7 @@ class InspectionController(Node):
         self.get_logger().info("GadgetInspectra controller started.")
 
     def reset_inspection(self):
+        self.started_at = datetime.now(timezone.utc).isoformat()
         self.state = "SYSTEM_READY"
         self.defect_detected = False
         # Kept for compatibility with the current dashboard; this is a
@@ -54,12 +66,16 @@ class InspectionController(Node):
         self.minimum_thickness_mm = None
         self.measurements = []
         self.measurement_phase = None
+        self.scenario_id = None
+        self.initial_measurements = []
+        self.verification_measurements = []
         self.pending_phase = None
         self.scan_started_at = None
         self.error_reason = None
 
     def publish_status(self):
         status = {
+            "run_id": self.run_id,
             "inspection_id": self.inspection_id,
             "robot": "inspection_arm_01",
             "target": self.target,
@@ -72,6 +88,7 @@ class InspectionController(Node):
             "threshold_mm": self.MINIMUM_ACCEPTABLE_THICKNESS_MM,
             "measurements": self.measurements,
             "measurement_phase": self.measurement_phase,
+            "scenario_id": self.scenario_id,
             "error_reason": self.error_reason,
         }
         message = String(data=json.dumps(status))
@@ -123,6 +140,17 @@ class InspectionController(Node):
 
             if result.get("units") != "mm":
                 raise ValueError("Expected thickness readings in mm")
+            scenario_id = result.get("scenario_id")
+            if scenario_id is not None and (
+                not isinstance(scenario_id, str) or not scenario_id
+            ):
+                raise ValueError("Invalid scenario ID")
+            if (
+                self.pending_phase == "verification"
+                and self.scenario_id is not None
+                and scenario_id != self.scenario_id
+            ):
+                raise ValueError("Verification scenario does not match initial scan")
             points = result["points"]
             if not isinstance(points, list) or len(points) != 3:
                 raise ValueError("Expected exactly three scan points")
@@ -147,6 +175,11 @@ class InspectionController(Node):
         self.scan_started_at = None
         self.measurements = points
         self.measurement_phase = phase
+        if phase == "initial":
+            self.scenario_id = scenario_id
+            self.initial_measurements = points
+        else:
+            self.verification_measurements = points
         self.minimum_thickness_mm = min(readings)
         self.defect_detected = (
             self.minimum_thickness_mm < self.MINIMUM_ACCEPTABLE_THICKNESS_MM
@@ -163,6 +196,30 @@ class InspectionController(Node):
         self.get_logger().info(
             f"{phase} scan: minimum thickness {self.minimum_thickness_mm:.1f} mm"
         )
+
+    def record_terminal_inspection(self):
+        """Write a final decision with both scans for later inspection."""
+        record = {
+            "run_id": self.run_id,
+            "started_at": self.started_at,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "inspection_id": self.inspection_id,
+            "target": self.target,
+            "scenario_id": self.scenario_id,
+            "decision": "pass" if self.state == "INSPECTION_COMPLETE" else "fail",
+            "reason": self.error_reason,
+            "threshold_mm": self.MINIMUM_ACCEPTABLE_THICKNESS_MM,
+            "minimum_thickness_mm": self.minimum_thickness_mm,
+            "initial_measurements": self.initial_measurements,
+            "verification_measurements": self.verification_measurements,
+            "simulated_rework": self.rework_performed,
+        }
+        try:
+            self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.audit_path.open("a", encoding="utf-8") as audit_log:
+                audit_log.write(json.dumps(record) + "\n")
+        except OSError as error:
+            self.get_logger().error(f"Could not write inspection audit log: {error}")
 
     def run_workflow_step(self):
         self.publish_status()
@@ -191,6 +248,7 @@ class InspectionController(Node):
         elif self.state == "VERIFYING_REWORK":
             self.request_scan("verification")
         elif self.state in {"INSPECTION_COMPLETE", "INSPECTION_FAILED"}:
+            self.record_terminal_inspection()
             self.inspection_id += 1
             self.reset_inspection()
 

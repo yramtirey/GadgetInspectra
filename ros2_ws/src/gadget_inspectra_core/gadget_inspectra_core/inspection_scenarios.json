@@ -1,0 +1,8 @@
+{
+  "scenarios": [
+    {"id": "clear_panel", "initial": [8.2, 8.1, 8.3]},
+    {"id": "thin_spot_repaired", "initial": [8.2, 6.4, 8.3], "verification": [8.2, 8.0, 8.3]},
+    {"id": "thin_spot_persists", "initial": [8.1, 6.6, 8.0], "verification": [8.1, 6.8, 8.0]},
+    {"id": "sensor_timeout", "initial": null}
+  ]
+}

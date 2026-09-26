@@ -1,50 +1,52 @@
-# React + TypeScript + Vite
+# GadgetInspectra dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The dashboard displays live status from the GadgetInspectra ROS 2 inspection simulation. It shows three panel thickness readings against a 7.0 mm pass threshold, the current inspection state, recent updates, and an interactive 3D view of the simulated inspection arm.
 
-Currently, two official plugins are available:
+The sensor readings, arm motion, and rework are simulated. The dashboard does not control a physical robot.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Start the system
 
-## Expanding the ESLint configuration
+From the **repository root**, open two terminals.
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+**Terminal 1 — ROS 2**
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```bash
+cd ros2_ws
+colcon build --symlink-install
+source install/setup.bash
+export GADGET_INSPECTION_SCENARIOS="$PWD/src/gadget_inspectra_core/gadget_inspectra_core/inspection_scenarios.json"
+ros2 launch gadget_inspectra_core inspection_system.launch.py
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+**Terminal 2 — dashboard**
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```bash
+cd dashboard
+npm ci
+npm run dev -- --host 0.0.0.0
 ```
+
+Open [http://localhost:5173](http://localhost:5173). If you are using a development container, forward port 5173 to your browser. The browser also needs access to the Rosbridge WebSocket on port 9090; forward that port if necessary. The dashboard currently connects to `ws://localhost:9090`.
+
+The connection badge shows **ROS ONLINE** after Rosbridge connects. With ROS offline, the dashboard shows a waiting state and clears old readings.
+
+## What to expect
+
+| Scenario | Initial readings (P01, P02, P03) | Outcome |
+| --- | --- | --- |
+| Clear panel | 8.2, 8.1, 8.3 mm | Pass: minimum 8.1 mm |
+| Thin spot repaired | 8.2, 6.4, 8.3 mm | Simulated rework, then pass on a fresh 8.0 mm verification reading |
+| Thin spot persists | 8.1, 6.6, 8.0 mm | Fail: verification still measures 6.8 mm at P02 |
+| Sensor timeout | No reading | Fail: no sensor response within the timeout |
+
+The dashboard subscribes to the ROS `/inspection/status` topic through Rosbridge. The controller publishes a JSON string containing the inspection ID, state, progress, readings, scan phase, threshold, and error reason. Drag the 3D view to rotate it; its animation follows the reported inspection state.
+
+## Build
+
+From `dashboard/`:
+
+```bash
+npm run build
+```
+
+For the complete ROS workflow and source layout, see the [project README](../README.md).
