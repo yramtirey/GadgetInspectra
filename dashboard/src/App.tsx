@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as ROSLIB from "roslib";
 import "./App.css";
 import { InspectionScene } from "./components/InspectionScene";
 
 type InspectionStatus = {
+  run_id: string;
+  scenario_id: string | null;
   inspection_id: number;
   robot: string;
   target: string;
@@ -29,7 +31,7 @@ function describeState(status: InspectionStatus) {
     case "INSPECTING": return "Scanning panel";
     case "WAITING_FOR_SENSOR": return "Waiting for scan reading";
     case "ANALYZING": return "Checking thickness";
-    case "DEFECT_DETECTED": return "Thin spot detected";
+    case "REVIEW_REQUIRED": return "Operator review required";
     case "REWORKING": return "Simulating rework";
     case "VERIFYING_REWORK": return "Starting verification scan";
     case "WAITING_FOR_VERIFICATION": return "Waiting for verification";
@@ -44,6 +46,15 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<InspectionStatus | null>(null);
   const [eventLog, setEventLog] = useState<InspectionStatus[]>([]);
+
+  const reviewTopic = useRef<ROSLIB.Topic | null>(null);
+
+  function submitReview(action: "approve_rework" | "reject") {
+    if (!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id) return;
+    reviewTopic.current?.publish({
+      data: JSON.stringify({ run_id: status.run_id, inspection_id: status.inspection_id, action }),
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -70,6 +81,10 @@ function App() {
         setStatus(null);
         setEventLog([]);
       }
+    });
+
+    reviewTopic.current = new ROSLIB.Topic({
+      ros, name: "/inspection/review_action", messageType: "std_msgs/msg/String",
     });
 
     const statusTopic = new ROSLIB.Topic({
@@ -101,6 +116,8 @@ function App() {
     return () => {
       active = false;
       statusTopic.unsubscribe();
+      reviewTopic.current?.unadvertise();
+      reviewTopic.current = null;
       ros.close();
     };
   }, []);
@@ -152,6 +169,19 @@ function App() {
             <span className={`state-pill ${isAlert ? "alert" : ""}`}>
               {status ? describeState(status) : "Waiting for telemetry"}
             </span>
+          </div>
+
+          <p className="scene-caption">
+            Simulated scenario: {status?.scenario_id ? formatName(status.scenario_id) : "Awaiting scan"}
+          </p>
+          <div className="review-actions" aria-label="Operator review">
+            <p>{status?.state === "REVIEW_REQUIRED"
+              ? "Thin spot detected. Paused until you approve simulated rework or reject this inspection."
+              : "Review controls are available when a thin spot requires a decision."}</p>
+            <button disabled={!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
+              onClick={() => submitReview("approve_rework")}>Approve simulated rework</button>
+            <button disabled={!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
+              onClick={() => submitReview("reject")}>Reject inspection (no rework)</button>
           </div>
 
           <div className="robot-visual">

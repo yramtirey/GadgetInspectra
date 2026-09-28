@@ -359,3 +359,8 @@
   letter-spacing: 0.08em;
   pointer-events: none;
 }
+
+.review-actions { margin: 12px 0; color: var(--muted); font-size: 0.85rem; }
+.review-actions button { margin: 4px 8px 4px 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--burgundy); background: var(--burgundy); color: var(--paper); font: inherit; cursor: pointer; }
+.review-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.review-actions button:focus-visible { outline: 3px solid var(--aqua); outline-offset: 3px; }

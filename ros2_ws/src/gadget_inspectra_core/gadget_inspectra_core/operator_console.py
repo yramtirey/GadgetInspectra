@@ -11,7 +11,7 @@ STATE_LABELS = {
     "INSPECTING": "Scanning panel",
     "WAITING_FOR_SENSOR": "Waiting for scan reading",
     "ANALYZING": "Checking thickness",
-    "DEFECT_DETECTED": "Thin spot detected",
+    "REVIEW_REQUIRED": "Operator review required; simulation paused",
     "REWORKING": "Simulating rework",
     "VERIFYING_REWORK": "Starting verification scan",
     "WAITING_FOR_VERIFICATION": "Waiting for verification reading",
@@ -69,9 +69,12 @@ class OperatorConsole(Node):
                 f"{STATE_LABELS.get(state, state.replace('_', ' ').title())} | "
                 f"Target: {target.replace('_', ' ').title()} | "
                 f"Progress: {progress}%{reading}"
+                f" | Simulated scenario: {status.get('scenario_id') or 'pending'}"
+                f" | Operator action: {status.get('operator_action') or 'none'}"
+                f" | Action time: {status.get('operator_action_at') or 'none'}"
             )
 
-            if state == "DEFECT_DETECTED":
+            if state == "REVIEW_REQUIRED":
                 thin_spots = [
                     f"{point['point']} at {point['thickness_mm']:.1f} mm"
                     for point in measurements
@@ -82,7 +85,8 @@ class OperatorConsole(Node):
                 ]
                 location = f" | Thin spot: {', '.join(thin_spots)}" if thin_spots else ""
                 self.get_logger().warning(
-                    f"{summary}{location} | Below pass threshold"
+                    f"{summary}{location} | Awaiting approve_rework or reject on "
+                    f"/inspection/review_action | run_id: {status.get('run_id')}"
                 )
 
             elif state == "REWORKING":

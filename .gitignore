@@ -22,3 +22,8 @@ dashboard/dist/
 
 # Accidental npm install in ROS workspace
 ros2_ws/node_modules/
+
+# Local archives, preserved duplicates, and inspection audit logs
+*.zip
+.file-quarantine/
+*.jsonl

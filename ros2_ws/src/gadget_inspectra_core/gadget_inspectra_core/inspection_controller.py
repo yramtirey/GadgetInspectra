@@ -28,6 +28,10 @@ class InspectionController(Node):
             String, "/inspection/measurements", self.handle_measurement, 10
         )
 
+        self.review_subscription = self.create_subscription(
+            String, "/inspection/review_action", self.handle_review_action, 10
+        )
+
         self.target = "asset_panel_A"
         self.inspection_id = 1
         self.run_id = str(uuid4())
@@ -43,7 +47,7 @@ class InspectionController(Node):
             "INSPECTING": 30,
             "WAITING_FOR_SENSOR": 40,
             "ANALYZING": 55,
-            "DEFECT_DETECTED": 65,
+            "REVIEW_REQUIRED": 65,
             "REWORKING": 75,
             "VERIFYING_REWORK": 85,
             "WAITING_FOR_VERIFICATION": 90,
@@ -72,6 +76,8 @@ class InspectionController(Node):
         self.pending_phase = None
         self.scan_started_at = None
         self.error_reason = None
+        self.operator_action = None
+        self.operator_action_at = None
 
     def publish_status(self):
         status = {
@@ -89,11 +95,37 @@ class InspectionController(Node):
             "measurements": self.measurements,
             "measurement_phase": self.measurement_phase,
             "scenario_id": self.scenario_id,
+            "operator_action": self.operator_action,
+            "operator_action_at": self.operator_action_at,
             "error_reason": self.error_reason,
         }
         message = String(data=json.dumps(status))
         self.status_publisher.publish(message)
         self.get_logger().info(f"Published status: {message.data}")
+
+    def handle_review_action(self, message):
+        """Accept one decision for the current paused inspection only."""
+        try:
+            action = json.loads(message.data)
+        except (json.JSONDecodeError, TypeError):
+            return
+        if (
+            not isinstance(action, dict)
+            or self.state != "REVIEW_REQUIRED"
+            or self.operator_action is not None
+            or action.get("run_id") != self.run_id
+            or type(action.get("inspection_id")) is not int
+            or action["inspection_id"] != self.inspection_id
+            or action.get("action") not in ("approve_rework", "reject")
+        ):
+            return
+        self.operator_action = action["action"]
+        self.operator_action_at = datetime.now(timezone.utc).isoformat()
+        if self.operator_action == "approve_rework":
+            self.state = "REWORKING"
+        else:
+            self.fail_inspection("Operator rejected inspection without rework")
+        self.publish_status()
 
     def request_scan(self, phase):
         self.pending_phase = phase
@@ -206,6 +238,8 @@ class InspectionController(Node):
             "inspection_id": self.inspection_id,
             "target": self.target,
             "scenario_id": self.scenario_id,
+            "operator_action": self.operator_action,
+            "operator_action_at": self.operator_action_at,
             "decision": "pass" if self.state == "INSPECTION_COMPLETE" else "fail",
             "reason": self.error_reason,
             "threshold_mm": self.MINIMUM_ACCEPTABLE_THICKNESS_MM,
@@ -238,10 +272,8 @@ class InspectionController(Node):
                 self.fail_inspection("Sensor response timed out")
         elif self.state == "ANALYZING":
             self.state = (
-                "DEFECT_DETECTED" if self.defect_detected else "INSPECTION_COMPLETE"
+                "REVIEW_REQUIRED" if self.defect_detected else "INSPECTION_COMPLETE"
             )
-        elif self.state == "DEFECT_DETECTED":
-            self.state = "REWORKING"
         elif self.state == "REWORKING":
             self.rework_performed = True
             self.state = "VERIFYING_REWORK"

@@ -35,9 +35,13 @@ The connection badge shows **ROS ONLINE** after Rosbridge connects. With ROS off
 | Scenario | Initial readings (P01, P02, P03) | Outcome |
 | --- | --- | --- |
 | Clear panel | 8.2, 8.1, 8.3 mm | Pass: minimum 8.1 mm |
-| Thin spot repaired | 8.2, 6.4, 8.3 mm | Simulated rework, then pass on a fresh 8.0 mm verification reading |
-| Thin spot persists | 8.1, 6.6, 8.0 mm | Fail: verification still measures 6.8 mm at P02 |
+| Thin spot repaired | 8.2, 6.4, 8.3 mm | Pause for review; approval runs simulated rework, then pass on a fresh 8.0 mm verification reading |
+| Thin spot persists | 8.1, 6.6, 8.0 mm | Pause for review; after approval, fail: verification still measures 6.8 mm at P02 |
 | Sensor timeout | No reading | Fail: no sensor response within the timeout |
+
+Thin spots pause in `REVIEW_REQUIRED` until you choose **Approve simulated rework** or **Reject inspection (no rework)**. Rejection fails without rework or verification. The buttons are disabled outside review and when ROS is offline. The simulated scenario name is shown above them. Approval requests a fresh verification scan after simulated rework; verification can still fail.
+
+The buttons publish a JSON string on `/inspection/review_action` with the current `run_id`, integer `inspection_id`, and `action` (`approve_rework` or `reject`). The controller ignores stale, duplicate, and invalid actions. Its terminal JSONL audit includes `operator_action` and the controller-assigned UTC `operator_action_at`, alongside initial and verification readings. No physical repair, robot control, real ultrasonic data, or validated inspection accuracy is represented.
 
 The dashboard subscribes to the ROS `/inspection/status` topic through Rosbridge. The controller publishes a JSON string containing the inspection ID, state, progress, readings, scan phase, threshold, and error reason. Drag the 3D view to rotate it; its animation follows the reported inspection state.
 

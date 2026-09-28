@@ -1,6 +1,6 @@
 # GadgetInspectra
 
-GadgetInspectra is a **simulated robotic inspection system** built with ROS 2 and a browser dashboard. A controller requests ultrasonic thickness readings, checks three points against a 7.0 mm minimum, and sends status updates to an operator console and an interactive 3D view. A detected thin spot triggers a simulated rework step followed by a new verification scan.
+GadgetInspectra is a **simulated robotic inspection system** built with ROS 2 and a browser dashboard. A controller requests simulated ultrasonic thickness readings, checks three points against a 7.0 mm minimum, and sends status updates to an operator console and an interactive 3D view. A detected thin spot pauses in `REVIEW_REQUIRED` until an operator approves simulated rework and a fresh verification scan, or rejects the inspection without rework.
 
 The measurements and arm motion are simulated. The project demonstrates the software workflow and live telemetry; it does not control a physical robot or ultrasonic instrument.
 
@@ -12,12 +12,12 @@ The current version exercises that workflow with four repeatable simulated scena
 
 ## What it shows
 
-- A ROS 2 controller coordinates inspection, analysis, simulated rework, verification, and failure states.
+- A ROS 2 controller coordinates inspection, analysis, operator review, simulated rework, verification, and failure states.
 - A separate sensor node responds to scan requests with deterministic three-point thickness measurements.
 - Editable scenario input can exercise both a verified repair and a repair that still fails the threshold, as well as a sensor timeout.
 - The controller accepts only readings for the current inspection and scan phase, validates the values, and times out if the sensor does not respond.
 - An operator console reports measured values and the reason for each pass or failure.
-- One audit record per completed inspection saves both sets of readings, the decision, and its reason to a JSON Lines file.
+- One audit record per completed inspection saves both sets of readings, the decision, its reason, and the operator action and UTC action time to a JSON Lines file.
 - A React dashboard receives ROS status through Rosbridge WebSocket and shows the inspection state, three readings, threshold, event history, and a rotatable Three.js scene.
 
 ```mermaid
@@ -27,6 +27,8 @@ flowchart LR
     C -->|Status| O[Operator console]
     C -->|Status| R[Rosbridge]
     R -->|WebSocket| D[React dashboard]
+    D -->|Operator decision| R
+    R -->|Review action| C
 ```
 
 ## Example inspection
@@ -36,8 +38,8 @@ The sensor replays four scenarios in order, then repeats the sequence. Its built
 | Scenario | Initial readings at P01, P02, P03 | Decision | Verification |
 | --- | --- | --- | --- |
 | Clear panel | 8.2, 8.1, 8.3 mm | Pass; minimum 8.1 mm | Not needed |
-| Thin spot repaired | 8.2, 6.4, 8.3 mm | P02 below 7.0 mm | After simulated rework: 8.2, 8.0, 8.3 mm; pass |
-| Thin spot persists | 8.1, 6.6, 8.0 mm | P02 below 7.0 mm | After simulated rework: 8.1, 6.8, 8.0 mm; fail |
+| Thin spot repaired | 8.2, 6.4, 8.3 mm | P02 below 7.0 mm | After operator approval and simulated rework: 8.2, 8.0, 8.3 mm; pass |
+| Thin spot persists | 8.1, 6.6, 8.0 mm | P02 below 7.0 mm | After operator approval and simulated rework: 8.1, 6.8, 8.0 mm; fail |
 | Sensor timeout | No response | Fail after timeout | Not reached |
 
 If a reading is invalid or the sensor does not respond within eight seconds, the controller marks that inspection as failed. The next cycle starts with a new inspection ID.
@@ -68,7 +70,32 @@ npm run dev -- --host 0.0.0.0
 
 Open `http://localhost:5173`. If you are using a development container, forward port `5173` to your browser. The browser must also reach Rosbridge on port `9090`; forward that port if needed. The dashboard connects to `ws://localhost:9090`, shows **ROS ONLINE** once it connects, and clears old telemetry if the connection closes.
 
-To check the flow, watch four inspections: a direct pass, a verified pass after simulated rework, a failed verification, and a sensor timeout. Drag the 3D view to rotate it.
+To check the flow, approve simulated rework for both thin-spot scenarios using the dashboard buttons and watch four inspections: a direct pass, a verified pass after simulated rework, a failed verification, and a sensor timeout. Drag the 3D view to rotate it.
+
+## Operator review
+
+Any initial reading below 7.0 mm leads to `REVIEW_REQUIRED`. The controller stays paused indefinitely, with no rework or verification request, until it accepts a decision. Exactly 7.0 mm passes the threshold. In the dashboard, choose **Approve simulated rework** to run simulated rework and request a fresh verification scan, or **Reject inspection (no rework)** to fail immediately without repair. Controls are disabled outside review and while ROS is offline. The simulated scenario name appears above the controls.
+
+Clients can also publish a `std_msgs/msg/String` on `/inspection/review_action`. Its JSON payload must contain the current IDs from `/inspection/status`:
+
+```json
+{"run_id": "<current controller run UUID>", "inspection_id": 2, "action": "approve_rework"}
+```
+
+The other supported action is `reject`. Stale run/inspection IDs, duplicate decisions, malformed payloads, and actions outside review are ignored. The controller assigns the UTC `operator_action_at` timestamp when accepting `operator_action`; both fields appear in status and the terminal audit record (null when no review occurred). A rejection records a failure with no verification readings and `simulated_rework: false`. Approval does not guarantee a pass: verification can fail or time out. The console shows the paused state, scenario, current run ID, accepted action, and action time.
+
+The audit file is appended when the terminal state is processed on the next controller tick. It is a local demonstration log, not a durable or authenticated operator-signoff system; stopping the process before that tick or a disk write failure can prevent recording.
+
+## Verification
+
+Build the ROS package as above, then run the behavioral tests from the repository root:
+
+```bash
+source ros2_ws/install/setup.bash
+ROS_DOMAIN_ID=87 python3 -m pytest ros2_ws/src/gadget_inspectra_core/test/test_operator_review.py -q
+```
+
+These tests use real ROS topics in an isolated domain with accelerated controller ticks. They cover the review pause, approved verification pass and failure, rejection, stale/invalid/duplicate decisions, audit fields, a clear panel, and sensor timeout. Build and lint the browser code with `npm run build` and `npm run lint` from `dashboard/`.
 
 ## Code layout
 
@@ -88,6 +115,6 @@ This is a software demonstration with synthetic thickness readings. The 3D arm f
 
 The next version should add repeated readings at each location and independent reference labels. The controller could then distinguish a clear pass, a clear thin spot, and a borderline reading that needs another scan or operator review. The current examples are authored test cases, not a representative inspection dataset.
 
-Success would be measured against those reference labels: count missed thin spots, unnecessary reviews, and decisions made without sufficient readings. The current audit log records readings, decisions, reasons, and timestamps. Verification already uses a separate scenario reading and can fail; the controller still automatically enters a simulated rework stage, so an operator approval step remains future work.
+Success would be measured against those reference labels: count missed thin spots, unnecessary reviews, and decisions made without sufficient readings. The current audit log records readings, decisions, reasons, and timestamps. Verification already uses a separate scenario reading and can fail; thin spots now pause for an explicit operator approval or rejection before any simulated rework.
 
 This milestone would make the project a testable inspection decision system while remaining honest that its sensor and robot are simulated. A later integration could replace scenario input with recorded or live thickness measurements.
