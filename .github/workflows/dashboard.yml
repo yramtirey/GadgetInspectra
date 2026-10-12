@@ -1,0 +1,56 @@
+name: Check and deploy browser demo
+
+on:
+  pull_request:
+    paths: ['dashboard/**', 'ros2_ws/src/gadget_inspectra_core/gadget_inspectra_core/inspection_scenarios.json', '.github/workflows/dashboard.yml']
+  push:
+    branches: [master]
+    paths: ['dashboard/**', 'ros2_ws/src/gadget_inspectra_core/gadget_inspectra_core/inspection_scenarios.json', '.github/workflows/dashboard.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gadgetinspectra-browser-demo
+          path: dashboard/dist
+      - uses: actions/upload-pages-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: dashboard/dist
+  deploy:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: gadgetinspectra-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment

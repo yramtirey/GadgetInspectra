@@ -68,7 +68,7 @@ npm ci
 npm run dev -- --host 0.0.0.0
 ```
 
-Open `http://localhost:5173`. If you are using a development container, forward port `5173` to your browser. The browser must also reach Rosbridge on port `9090`; forward that port if needed. The dashboard connects to `ws://localhost:9090`, shows **ROS ONLINE** once it connects, and clears old telemetry if the connection closes.
+Open `http://localhost:5173/?mode=live` for the live ROS workflow. If you are using a development container, forward port `5173` to your browser. The browser must also reach Rosbridge on port `9090`; forward that port if needed. The dashboard connects to `ws://localhost:9090`, shows **ROS ONLINE** once it connects, and clears old telemetry if the connection closes.
 
 To check the flow, approve simulated rework for both thin-spot scenarios using the dashboard buttons and watch four inspections: a direct pass, a verified pass after simulated rework, a failed verification, and a sensor timeout. Drag the 3D view to rotate it.
 
@@ -118,3 +118,24 @@ The next version should add repeated readings at each location and independent r
 Success would be measured against those reference labels: count missed thin spots, unnecessary reviews, and decisions made without sufficient readings. The current audit log records readings, decisions, reasons, and timestamps. Verification already uses a separate scenario reading and can fail; thin spots now pause for an explicit operator approval or rejection before any simulated rework.
 
 This milestone would make the project a testable inspection decision system while remaining honest that its sensor and robot are simulated. A later integration could replace scenario input with recorded or live thickness measurements.
+
+## Standalone browser demo
+
+The dashboard opens in **Browser simulation** mode by default, with no ROS 2 or
+Rosbridge connection. Select one of the four scenarios, use Play/Pause or Next
+step, and approve simulated rework or reject a thin spot. Final results remain
+visible until you restart or select another scenario. The browser uses the same
+scenario readings as the ROS simulator; its illustrative state machine is
+separate from the ROS controller. Readings, motion, and rework are synthetic,
+and browser results are not saved to the ROS audit log.
+
+For the live workflow above, open `http://localhost:5173/?mode=live` or select
+**Live ROS** in the dashboard. This connects to `ws://localhost:9090`; use the
+local dashboard when an HTTPS-hosted browser blocks insecure WebSockets.
+
+The intended public demo URL is
+`https://yramtirey.github.io/GadgetInspectra/?mode=demo`. The dashboard workflow
+checks PRs and uploads build artifacts; it deploys only from `master`. Enable
+GitHub Pages with **GitHub Actions** as the source in repository settings.
+The portfolio link should be deployed only after this demo deployment succeeds.
+PR artifacts and local previews are not published Pages URLs.

@@ -26,7 +26,7 @@ npm ci
 npm run dev -- --host 0.0.0.0
 ```
 
-Open [http://localhost:5173](http://localhost:5173). If you are using a development container, forward port 5173 to your browser. The browser also needs access to the Rosbridge WebSocket on port 9090; forward that port if necessary. The dashboard currently connects to `ws://localhost:9090`.
+Open [http://localhost:5173/?mode=live](http://localhost:5173/?mode=live) for the live ROS workflow. If you are using a development container, forward port 5173 to your browser. The browser also needs access to the Rosbridge WebSocket on port 9090; forward that port if necessary. The dashboard currently connects to `ws://localhost:9090`.
 
 The connection badge shows **ROS ONLINE** after Rosbridge connects. With ROS offline, the dashboard shows a waiting state and clears old readings.
 
@@ -54,3 +54,24 @@ npm run build
 ```
 
 For the complete ROS workflow and source layout, see the [project README](../README.md).
+
+## Browser simulation and live mode
+
+The default mode is a browser-only simulation; it never opens a ROS connection.
+Use the scenario selector, Play/Pause, Next step, Restart scenario, and operator
+review buttons to explore all four deterministic scenarios. Timeouts count eight
+simulation ticks (one tick per second while playing, or one per Next step).
+Pausing freezes simulation time. Review and terminal states wait for user input.
+
+Use `?mode=live` (or the Live ROS link) for the original ROS dashboard. Run the
+local ROS nodes and Rosbridge first; `?mode=demo` returns to the simulation.
+No browser-simulated reading or action is sent to ROS, and demo results are not
+persisted. Both modes clearly label their data source.
+
+`npm run build` emits `dist/` with relative asset paths, so the same build works
+under `/GadgetInspectra/` on GitHub Pages and under a local preview path.
+`npm run lint` and `npm test` check the dashboard. For browser tests, first run
+`npx playwright install chromium`. Tests serve the production build under
+`/GadgetInspectra/`, check scenario outcomes without waiting for wall-clock
+playback, and verify the live transport using a mock Rosbridge server (not ROS
+integration). Run `npm run build` before `npm test`.
