@@ -3,22 +3,8 @@ import * as ROSLIB from "roslib";
 import "./App.css";
 import { InspectionScene } from "./components/InspectionScene";
 
-type InspectionStatus = {
-  run_id: string;
-  scenario_id: string | null;
-  inspection_id: number;
-  robot: string;
-  target: string;
-  state: string;
-  progress_percent: number;
-  defect_detected: boolean;
-  rework_performed: boolean;
-  minimum_thickness_mm: number | null;
-  threshold_mm: number;
-  measurements: { point: string; thickness_mm: number }[];
-  measurement_phase: "initial" | "verification" | null;
-  error_reason: string | null;
-};
+import type { InspectionStatus } from "./status";
+import { createDemo, advanceDemo, reviewDemo, scenarios } from "./demo";
 
 function formatName(name: string) {
   return name.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -43,13 +29,30 @@ function describeState(status: InspectionStatus) {
 }
 
 function App() {
+  const demoMode = new URLSearchParams(window.location.search).get("mode") !== "live";
+  const [demo, setDemo] = useState(() => createDemo(0));
+  const [playing, setPlaying] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [status, setStatus] = useState<InspectionStatus | null>(null);
-  const [eventLog, setEventLog] = useState<InspectionStatus[]>([]);
+  const [liveStatus, setStatus] = useState<InspectionStatus | null>(null);
+  const [liveEvents, setEventLog] = useState<InspectionStatus[]>([]);
+
+  const status = demoMode ? demo.status : liveStatus;
+  const eventLog = demoMode ? demo.events : liveEvents;
+  const available = demoMode || connected;
+
+  useEffect(() => {
+    if (!demoMode || !playing) return;
+    const timer = window.setInterval(() => setDemo(advanceDemo), 1000);
+    return () => window.clearInterval(timer);
+  }, [demoMode, playing]);
 
   const reviewTopic = useRef<ROSLIB.Topic | null>(null);
 
   function submitReview(action: "approve_rework" | "reject") {
+    if (demoMode) {
+      setDemo((current) => reviewDemo(current, action));
+      return;
+    }
     if (!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id) return;
     reviewTopic.current?.publish({
       data: JSON.stringify({ run_id: status.run_id, inspection_id: status.inspection_id, action }),
@@ -57,6 +60,7 @@ function App() {
   }
 
   useEffect(() => {
+    if (demoMode) return;
     let active = true;
     const ros = new ROSLIB.Ros({
       url: "ws://localhost:9090",
@@ -120,7 +124,7 @@ function App() {
       reviewTopic.current = null;
       ros.close();
     };
-  }, []);
+  }, [demoMode]);
 
   const isAlert = Boolean(
     status?.defect_detected || status?.state === "INSPECTION_FAILED",
@@ -145,15 +149,37 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">SIMULATED ROBOTIC INSPECTION · LIVE ROS TELEMETRY</p>
+          <p className="eyebrow">{demoMode ? "SIMULATED ROBOTIC INSPECTION · BROWSER DEMO" : "SIMULATED ROBOTIC INSPECTION · LIVE ROS TELEMETRY"}</p>
           <h1>GadgetInspectra</h1>
         </div>
 
-        <div className={`connection ${connected ? "online" : "offline"}`}>
+        <div className={`connection ${available ? "online" : "offline"}`}>
           <span className="connection-dot" />
-          {connected ? "ROS ONLINE" : "ROS OFFLINE"}
+          {demoMode ? "BROWSER SIMULATION" : connected ? "ROS ONLINE" : "ROS OFFLINE"}
         </div>
       </header>
+
+      <section className="demo-controls" aria-label="Dashboard mode and simulation controls">
+        <nav className="mode-links" aria-label="Dashboard mode">
+          <a href="?mode=demo" aria-current={demoMode ? "page" : undefined}>Browser demo</a>
+          <a href="?mode=live" aria-current={!demoMode ? "page" : undefined}>Live ROS</a>
+          <a href="https://github.com/yramtirey/GadgetInspectra">Source on GitHub ↗</a>
+          <a href="https://yramtirey.github.io/#personal-projects">Personal Projects ↗</a>
+        </nav>
+        <p>{demoMode
+          ? "Runs entirely in your browser. Readings, robot motion, and rework are simulated; no ROS connection, physical hardware, or persistent audit log."
+          : "Live mode connects to Rosbridge at ws://localhost:9090. Start the local ROS workflow and dashboard using the repository instructions; an HTTPS page may block an insecure WebSocket."}</p>
+        {demoMode && <div className="demo-buttons">
+          <label htmlFor="scenario">Scenario</label>
+          <select id="scenario" value={demo.scenarioIndex} onChange={(event) => setDemo(createDemo(Number(event.target.value), demo.status.inspection_id + 1))}>
+            {scenarios.map((scenario, index) => <option key={scenario.id} value={index}>{formatName(scenario.id)}</option>)}
+          </select>
+          <button onClick={() => setPlaying(!playing)}>{playing ? "Pause" : "Play"}</button>
+          <button onClick={() => { setPlaying(false); setDemo(advanceDemo); }}>Next step</button>
+          <button onClick={() => setDemo(createDemo(demo.scenarioIndex, demo.status.inspection_id + 1))}>Restart scenario</button>
+          {status?.state === "WAITING_FOR_SENSOR" && demo.scenarioIndex === 3 && <span>Simulated timeout: {demo.waitTicks} / 8 seconds</span>}
+        </div>}
+      </section>
 
       <section className="dashboard-grid">
         <article className="hero-card">
@@ -178,9 +204,9 @@ function App() {
             <p>{status?.state === "REVIEW_REQUIRED"
               ? "Thin spot detected. Paused until you approve simulated rework or reject this inspection."
               : "Review controls are available when a thin spot requires a decision."}</p>
-            <button disabled={!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
+            <button disabled={!available || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
               onClick={() => submitReview("approve_rework")}>Approve simulated rework</button>
-            <button disabled={!connected || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
+            <button disabled={!available || status?.state !== "REVIEW_REQUIRED" || !status.run_id}
               onClick={() => submitReview("reject")}>Reject inspection (no rework)</button>
           </div>
 
@@ -191,7 +217,9 @@ function App() {
             />
           </div>
           <p className="scene-caption">
-            {connected && status
+            {demoMode
+              ? "3D arm animation follows the browser simulation. Drag to explore."
+              : connected && status
               ? "3D arm animation follows ROS status; motion and rework are simulated."
               : "3D preview · waiting for live ROS telemetry."}
           </p>
@@ -217,7 +245,7 @@ function App() {
           <article className="metric-card">
             <p className="label">SIMULATED SCANNER</p>
             <strong>{status ? formatName(status.robot) : "Awaiting telemetry"}</strong>
-            <span>ROS-driven inspection arm visualization</span>
+            <span>{demoMode ? "Browser-simulated inspection arm" : "ROS-driven inspection arm visualization"}</span>
           </article>
 
           <article className="metric-card">
@@ -260,7 +288,7 @@ function App() {
         <article className="event-card">
           <div className="card-heading">
             <div>
-              <p className="label">LIVE ROS STATUS</p>
+              <p className="label">{demoMode ? "SIMULATED STATUS" : "LIVE ROS STATUS"}</p>
               <h2>Recent inspection updates</h2>
             </div>
             <span>{eventLog.length} recent updates</span>

@@ -27,3 +27,7 @@ ros2_ws/node_modules/
 *.zip
 .file-quarantine/
 *.jsonl
+
+# Browser regression output
+dashboard/test-results/
+dashboard/playwright-report/

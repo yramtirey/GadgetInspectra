@@ -364,3 +364,12 @@
 .review-actions button { margin: 4px 8px 4px 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--burgundy); background: var(--burgundy); color: var(--paper); font: inherit; cursor: pointer; }
 .review-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 .review-actions button:focus-visible { outline: 3px solid var(--aqua); outline-offset: 3px; }
+
+.demo-controls { margin-bottom: 24px; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--paper); }
+.demo-controls p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+.mode-links, .demo-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.mode-links a { color: var(--burgundy); font-size: 0.85rem; text-underline-offset: 4px; }
+.mode-links a[aria-current] { font-weight: 800; }
+.demo-buttons button, .demo-buttons select { padding: 10px 14px; border: 1px solid var(--burgundy); border-radius: 10px; background: var(--paper); color: var(--burgundy); font: inherit; cursor: pointer; max-width: 100%; }
+.demo-buttons label, .demo-buttons span { color: var(--muted); font-size: 0.85rem; }
+.demo-controls :focus-visible { outline: 3px solid var(--aqua); outline-offset: 3px; }
