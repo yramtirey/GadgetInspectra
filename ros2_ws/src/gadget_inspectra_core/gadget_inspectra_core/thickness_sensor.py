@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+from uuid import UUID
 
 import rclpy
 from rclpy.node import Node
@@ -92,6 +93,10 @@ class ThicknessSensor(Node):
     def handle_scan_request(self, message):
         try:
             request = json.loads(message.data)
+            run_id = request['run_id']
+            if not isinstance(run_id, str):
+                raise ValueError('Expected a controller run UUID string')
+            UUID(run_id)
             inspection_id = request["inspection_id"]
             target = request["target"]
             phase = request["phase"]
@@ -117,6 +122,7 @@ class ThicknessSensor(Node):
             return
 
         result = {
+            'run_id': run_id,
             "inspection_id": inspection_id,
             "target": target,
             "sensor": "simulated_ultrasonic_thickness",

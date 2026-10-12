@@ -15,7 +15,7 @@ The current version exercises that workflow with four repeatable simulated scena
 - A ROS 2 controller coordinates inspection, analysis, operator review, simulated rework, verification, and failure states.
 - A separate sensor node responds to scan requests with deterministic three-point thickness measurements.
 - Editable scenario input can exercise both a verified repair and a repair that still fails the threshold, as well as a sensor timeout.
-- The controller accepts only readings for the current inspection and scan phase, validates the values, and times out if the sensor does not respond.
+- The controller accepts only readings for the current controller session, inspection, target, and scan phase, validates the values, and times out if the sensor does not respond.
 - An operator console reports measured values and the reason for each pass or failure.
 - One audit record per completed inspection saves both sets of readings, the decision, its reason, and the operator action and UTC action time to a JSON Lines file.
 - A React dashboard receives ROS status through Rosbridge WebSocket and shows the inspection state, three readings, threshold, event history, and a rotatable Three.js scene.
@@ -72,6 +72,19 @@ Open `http://localhost:5173`. If you are using a development container, forward 
 
 To check the flow, approve simulated rework for both thin-spot scenarios using the dashboard buttons and watch four inspections: a direct pass, a verified pass after simulated rework, a failed verification, and a sensor timeout. Drag the 3D view to rotate it.
 
+## Sensor-message contract
+
+Scan requests on `/inspection/scan_request` and responses on `/inspection/measurements`
+are JSON objects carried by `std_msgs/msg/String`. Both include `run_id` (the
+controller startup UUID string), `inspection_id`, `target`, and `phase` (`initial`
+or `verification`). The simulated sensor requires a UUID string and echoes the
+exact received `run_id`; missing or malformed tokens are logged and receive no
+response. The controller ignores responses whose token does not exactly match
+its current session, including missing or malformed tokens, even if the other
+scan identifiers match. These ignored responses leave accepted readings and the
+pending scan's original timeout unchanged. This prevents delayed readings from
+a previous controller session matching an inspection ID reused after restart.
+
 ## Operator review
 
 Any initial reading below 7.0 mm leads to `REVIEW_REQUIRED`. The controller stays paused indefinitely, with no rework or verification request, until it accepts a decision. Exactly 7.0 mm passes the threshold. In the dashboard, choose **Approve simulated rework** to run simulated rework and request a fresh verification scan, or **Reject inspection (no rework)** to fail immediately without repair. Controls are disabled outside review and while ROS is offline. The simulated scenario name appears above the controls.
@@ -92,10 +105,10 @@ Build the ROS package as above, then run the behavioral tests from the repositor
 
 ```bash
 source ros2_ws/install/setup.bash
-ROS_DOMAIN_ID=87 python3 -m pytest ros2_ws/src/gadget_inspectra_core/test/test_operator_review.py -q
+ROS_DOMAIN_ID=87 python3 -m pytest ros2_ws/src/gadget_inspectra_core/test/test_operator_review.py ros2_ws/src/gadget_inspectra_core/test/test_sensor_sessions.py -q
 ```
 
-These tests use real ROS topics in an isolated domain with accelerated controller ticks. They cover the review pause, approved verification pass and failure, rejection, stale/invalid/duplicate decisions, audit fields, a clear panel, and sensor timeout. Build and lint the browser code with `npm run build` and `npm run lint` from `dashboard/`.
+The operator-review tests and sensor propagation checks use real ROS topics in an isolated domain with accelerated controller ticks. Session rejection tests call production callbacks on real ROS nodes directly; timeout checks use a controlled clock or an adjusted scan deadline. Sensor silence checks capture publish calls. They cover the review pause, approved verification pass and failure, rejection, stale/invalid/duplicate decisions, audit fields, a clear panel, and sensor timeout. Build and lint the browser code with `npm run build` and `npm run lint` from `dashboard/`.
 
 ## Code layout
 

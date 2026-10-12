@@ -131,6 +131,7 @@ class InspectionController(Node):
         self.pending_phase = phase
         self.scan_started_at = time.monotonic()
         request = {
+            'run_id': self.run_id,
             "inspection_id": self.inspection_id,
             "target": self.target,
             "phase": phase,
@@ -160,10 +161,12 @@ class InspectionController(Node):
             if not isinstance(result, dict):
                 raise ValueError("Expected an object")
 
-            # A delayed response from a previous scan must not complete
+            # A delayed response from a previous session or scan must not complete
             # the current scan or fail the current inspection.
             if (
-                result.get("inspection_id") != self.inspection_id
+                not isinstance(result.get('run_id'), str)
+                or result['run_id'] != self.run_id
+                or result.get("inspection_id") != self.inspection_id
                 or result.get("target") != self.target
                 or result.get("phase") != self.pending_phase
             ):
